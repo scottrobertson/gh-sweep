@@ -1,7 +1,11 @@
 {
   "name": "gh-sweep",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Interactive CLI to review and clean up your GitHub repos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scottrobertson/gh-sweep.git"
+  },
   "type": "module",
   "bin": {
     "gh-sweep": "dist/index.js"
