@@ -50,6 +50,14 @@ export async function archiveRepo(
   await octokit.rest.repos.update({ owner, repo, archived: true });
 }
 
+export async function unarchiveRepo(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+): Promise<void> {
+  await octokit.rest.repos.update({ owner, repo, archived: false });
+}
+
 export async function deleteRepo(
   octokit: Octokit,
   owner: string,

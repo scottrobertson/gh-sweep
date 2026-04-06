@@ -5,6 +5,7 @@ import {
   createOctokit,
   fetchAllRepos,
   archiveRepo,
+  unarchiveRepo,
   deleteRepo,
   type Repo,
 } from "./github.js";
@@ -47,8 +48,8 @@ function formatDate(iso: string): string {
   });
 }
 
-type Result = "skipped" | "archived" | "deleted";
-type Status = Result | "archiving..." | "deleting...";
+type Result = "skipped" | "archived" | "deleted" | "unarchived" | "error";
+type Status = Result | "archiving..." | "deleting..." | "unarchiving...";
 type Filter = "all" | "public" | "private" | "sources" | "forks" | "archived";
 
 const FILTERS: Filter[] = ["all", "public", "private", "sources", "forks", "archived"];
@@ -133,7 +134,8 @@ function RepoListItem({
     (repo.language ?? "").padEnd(widths.lang),
   ].join("  ");
 
-  const isPending = status === "archiving..." || status === "deleting...";
+  const isPending = status === "archiving..." || status === "deleting..." || status === "unarchiving...";
+  const isError = status === "error";
 
   return (
     <Box>
@@ -144,7 +146,7 @@ function RepoListItem({
         {cols}
       </Text>
       {status && (
-        <Text color={isPending ? "gray" : "yellow"}>
+        <Text color={isError ? "red" : isPending ? "gray" : "yellow"}>
           {"  "}
           {isPending ? status : `→ ${status}`}
         </Text>
@@ -190,11 +192,11 @@ function FilterPicker({
       paddingX={2}
       paddingY={1}
     >
-      <Text bold>Select type</Text>
+      <Text bold>  Select type</Text>
       <Text> </Text>
       {FILTERS.map((f, i) => (
         <Text key={f} color={i === selected ? "cyan" : undefined} bold={i === selected}>
-          {i === selected ? "❯ " + f : "  " + f}
+          {i === selected ? "  ❯ " + f : "    " + f}
         </Text>
       ))}
     </Box>
@@ -202,23 +204,30 @@ function FilterPicker({
 }
 
 function ActionBar({
-  processed,
+  status,
   filter,
+  isArchivedRepo,
 }: {
-  processed: boolean;
+  status?: Status;
   filter: Filter;
+  isArchivedRepo: boolean;
 }) {
-  const isArchived = filter === "archived";
+  const pending = status?.endsWith("...");
+  const deleted = status === "deleted";
+  const errored = status === "error";
+  const archived = isArchivedRepo || status === "archived";
+  const untouched = !status || errored;
 
   const actions = [
-    { key: "v", label: "view" },
-    ...(!processed && !isArchived ? [{ key: "a", label: "archive" }] : []),
-    ...(!processed ? [{ key: "d", label: "delete" }] : []),
-    ...(!processed ? [{ key: "s", label: "skip" }] : []),
-    { key: "f", label: "filter" },
-    { key: "r", label: "reload" },
-    { key: "q", label: "quit" },
-  ];
+    { key: "v", label: "view",      show: true },
+    { key: "a", label: "archive",   show: (untouched || status === "unarchived") && !archived },
+    { key: "u", label: "unarchive", show: archived && !pending && !deleted },
+    { key: "d", label: "delete",    show: !pending && !deleted },
+    { key: "s", label: "skip",      show: untouched },
+    { key: "f", label: "filter",    show: true },
+    { key: "r", label: "reload",    show: true },
+    { key: "q", label: "quit",      show: true },
+  ].filter((a) => a.show);
 
   return (
     <Box gap={2}>
@@ -347,36 +356,48 @@ function App() {
       return;
     }
 
-    // Don't allow actions on already-processed or in-progress repos
-    if (statuses.has(r.nameWithOwner)) return;
-
     const [owner, name] = r.nameWithOwner.split("/");
     const repoName = r.nameWithOwner;
+    const currentStatus = statuses.get(repoName);
+    const pending = currentStatus === "archiving..." || currentStatus === "deleting..." || currentStatus === "unarchiving...";
 
-    if (k === "s") {
+    // Block all actions while an API call is in flight
+    if (pending) return;
+
+    const isArchived = r.isArchived || currentStatus === "archived";
+
+    // Skip: only on unprocessed or errored repos
+    if (k === "s" && (!currentStatus || currentStatus === "error")) {
       setStatus(repoName, "skipped");
       const next = new Map(statuses).set(repoName, "skipped");
       setCurrent(findNextUnprocessed(current, next, repos));
       return;
     }
 
-    if (k === "a" && filter !== "archived") {
+    // Archive: on non-archived repos, or repos just unarchived/errored
+    if (k === "a" && !isArchived && (!currentStatus || currentStatus === "unarchived" || currentStatus === "error")) {
       setStatus(repoName, "archiving...");
-      const next = new Map(statuses).set(repoName, "archiving...");
-      setCurrent(findNextUnprocessed(current, next, repos));
-      archiveRepo(octokit, owner, name).then(() => {
-        setStatus(repoName, "archived");
-      });
+      archiveRepo(octokit, owner, name)
+        .then(() => setStatus(repoName, "archived"))
+        .catch(() => setStatus(repoName, "error"));
       return;
     }
 
-    if (k === "d") {
+    // Unarchive: on archived repos or repos just archived
+    if (k === "u" && isArchived && currentStatus !== "deleted") {
+      setStatus(repoName, "unarchiving...");
+      unarchiveRepo(octokit, owner, name)
+        .then(() => setStatus(repoName, "unarchived"))
+        .catch(() => setStatus(repoName, "error"));
+      return;
+    }
+
+    // Delete: on any repo that isn't already deleted
+    if (k === "d" && currentStatus !== "deleted") {
       setStatus(repoName, "deleting...");
-      const next = new Map(statuses).set(repoName, "deleting...");
-      setCurrent(findNextUnprocessed(current, next, repos));
-      deleteRepo(octokit, owner, name).then(() => {
-        setStatus(repoName, "deleted");
-      });
+      deleteRepo(octokit, owner, name)
+        .then(() => setStatus(repoName, "deleted"))
+        .catch(() => setStatus(repoName, "error"));
     }
   });
 
@@ -423,8 +444,9 @@ function App() {
           <Text dimColor>↑↓ select  enter confirm  esc cancel</Text>
         ) : (
           <ActionBar
-            processed={repo ? statuses.has(repo.nameWithOwner) : false}
+            status={repo ? statuses.get(repo.nameWithOwner) : undefined}
             filter={filter}
+            isArchivedRepo={repo?.isArchived ?? false}
           />
         )}
       </Box>
