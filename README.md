@@ -36,6 +36,15 @@ Run `gh-sweep` and use the keyboard to navigate:
 | `r` | Reload repo list |
 | `q` | Quit |
 
+## Releasing
+
+```
+npm version patch # or minor, major
+git push --follow-tags
+```
+
+Then create a GitHub release from the tag to trigger the npm publish.
+
 ## License
 
 MIT
