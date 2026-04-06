@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { formatDate, applyFilter, calcWidths } from "./utils.js";
+import { describe, expect, it } from "vitest";
 import type { Repo } from "./github.js";
+import { applyFilter, calcWidths, formatDate } from "./utils.js";
 
 function makeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
@@ -37,7 +37,11 @@ describe("applyFilter", () => {
     makeRepo({ nameWithOwner: "u/private", visibility: "private" }),
     makeRepo({ nameWithOwner: "u/fork", isFork: true }),
     makeRepo({ nameWithOwner: "u/archived", isArchived: true }),
-    makeRepo({ nameWithOwner: "u/archived-fork", isArchived: true, isFork: true }),
+    makeRepo({
+      nameWithOwner: "u/archived-fork",
+      isArchived: true,
+      isFork: true,
+    }),
   ];
 
   it("all excludes archived", () => {
@@ -97,8 +101,18 @@ describe("calcWidths", () => {
 
   it("calculates max widths across repos", () => {
     const repos = [
-      makeRepo({ nameWithOwner: "u/short", visibility: "public", stars: 5, language: "Go" }),
-      makeRepo({ nameWithOwner: "u/much-longer-name", visibility: "private", stars: 1234, language: "TypeScript" }),
+      makeRepo({
+        nameWithOwner: "u/short",
+        visibility: "public",
+        stars: 5,
+        language: "Go",
+      }),
+      makeRepo({
+        nameWithOwner: "u/much-longer-name",
+        visibility: "private",
+        stars: 1234,
+        language: "TypeScript",
+      }),
     ];
     const widths = calcWidths(repos);
     expect(widths.name).toBe("u/much-longer-name".length);

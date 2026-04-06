@@ -1,10 +1,28 @@
 import type { Repo } from "./github.js";
 
-export type Result = "skipped" | "archived" | "deleted" | "unarchived" | "error";
+export type Result =
+  | "skipped"
+  | "archived"
+  | "deleted"
+  | "unarchived"
+  | "error";
 export type Status = Result | "archiving..." | "deleting..." | "unarchiving...";
-export type Filter = "all" | "public" | "private" | "sources" | "forks" | "archived";
+export type Filter =
+  | "all"
+  | "public"
+  | "private"
+  | "sources"
+  | "forks"
+  | "archived";
 
-export const FILTERS: Filter[] = ["all", "public", "private", "sources", "forks", "archived"];
+export const FILTERS: Filter[] = [
+  "all",
+  "public",
+  "private",
+  "sources",
+  "forks",
+  "archived",
+];
 
 export interface ColWidths {
   name: number;

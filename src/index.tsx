@@ -1,23 +1,22 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { render, Box, Text, useInput, useApp, useStdout } from "ink";
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
+import { Box, render, Text, useApp, useInput, useStdout } from "ink";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createOctokit,
-  fetchAllRepos,
   archiveRepo,
-  unarchiveRepo,
+  createOctokit,
   deleteRepo,
+  fetchAllRepos,
   type Repo,
+  unarchiveRepo,
 } from "./github.js";
 import {
-  formatDate,
   applyFilter,
+  type ColWidths,
   calcWidths,
   FILTERS,
-  type Result,
-  type Status,
   type Filter,
-  type ColWidths,
+  formatDate,
+  type Status,
 } from "./utils.js";
 
 function getToken(): string {
@@ -51,7 +50,6 @@ function openUrl(url: string): void {
   } catch {}
 }
 
-
 function Header({
   current,
   total,
@@ -74,7 +72,6 @@ function Header({
   );
 }
 
-
 function RepoListItem({
   repo,
   status,
@@ -90,12 +87,15 @@ function RepoListItem({
     repo.nameWithOwner.padEnd(widths.name),
     repo.visibility.toUpperCase().padEnd(widths.vis),
     (repo.isFork ? "FORK" : "").padEnd(4),
-    ("★" + String(repo.stars)).padStart(widths.stars + 1),
+    `★${String(repo.stars)}`.padStart(widths.stars + 1),
     formatDate(repo.updatedAt).padEnd(widths.date),
     (repo.language ?? "").padEnd(widths.lang),
   ].join("  ");
 
-  const isPending = status === "archiving..." || status === "deleting..." || status === "unarchiving...";
+  const isPending =
+    status === "archiving..." ||
+    status === "deleting..." ||
+    status === "unarchiving...";
   const isError = status === "error";
 
   return (
@@ -139,25 +139,18 @@ function RepoDetail({ repo }: { repo: Repo }) {
   );
 }
 
-function FilterPicker({
-  current,
-  selected,
-}: {
-  current: Filter;
-  selected: number;
-}) {
+function FilterPicker({ selected }: { selected: number }) {
   return (
-    <Box
-      borderStyle="round"
-      flexDirection="column"
-      paddingX={2}
-      paddingY={1}
-    >
-      <Text bold>  Select type</Text>
+    <Box borderStyle="round" flexDirection="column" paddingX={2} paddingY={1}>
+      <Text bold> Select type</Text>
       <Text> </Text>
       {FILTERS.map((f, i) => (
-        <Text key={f} color={i === selected ? "cyan" : undefined} bold={i === selected}>
-          {i === selected ? "  ❯ " + f : "    " + f}
+        <Text
+          key={f}
+          color={i === selected ? "cyan" : undefined}
+          bold={i === selected}
+        >
+          {i === selected ? `  ❯ ${f}` : `    ${f}`}
         </Text>
       ))}
     </Box>
@@ -166,11 +159,9 @@ function FilterPicker({
 
 function ActionBar({
   status,
-  filter,
   isArchivedRepo,
 }: {
   status?: Status;
-  filter: Filter;
   isArchivedRepo: boolean;
 }) {
   const pending = status?.endsWith("...");
@@ -180,14 +171,18 @@ function ActionBar({
   const untouched = !status || errored;
 
   const actions = [
-    { key: "v", label: "view",      show: true },
-    { key: "a", label: "archive",   show: (untouched || status === "unarchived") && !archived },
+    { key: "v", label: "view", show: true },
+    {
+      key: "a",
+      label: "archive",
+      show: (untouched || status === "unarchived") && !archived,
+    },
     { key: "u", label: "unarchive", show: archived && !pending && !deleted },
-    { key: "d", label: "delete",    show: !pending && !deleted },
-    { key: "s", label: "skip",      show: untouched },
-    { key: "f", label: "filter",    show: true },
-    { key: "r", label: "reload",    show: true },
-    { key: "q", label: "quit",      show: true },
+    { key: "d", label: "delete", show: !pending && !deleted },
+    { key: "s", label: "skip", show: untouched },
+    { key: "f", label: "filter", show: true },
+    { key: "r", label: "reload", show: true },
+    { key: "q", label: "quit", show: true },
   ].filter((a) => a.show);
 
   return (
@@ -225,9 +220,12 @@ function App() {
 
   useEffect(() => {
     loadRepos();
-  }, []);
+  }, [loadRepos]);
 
-  const repos = useMemo(() => applyFilter(allRepos, filter), [allRepos, filter]);
+  const repos = useMemo(
+    () => applyFilter(allRepos, filter),
+    [allRepos, filter],
+  );
 
   const widths = useMemo(() => calcWidths(repos), [repos]);
 
@@ -320,7 +318,10 @@ function App() {
     const [owner, name] = r.nameWithOwner.split("/");
     const repoName = r.nameWithOwner;
     const currentStatus = statuses.get(repoName);
-    const pending = currentStatus === "archiving..." || currentStatus === "deleting..." || currentStatus === "unarchiving...";
+    const pending =
+      currentStatus === "archiving..." ||
+      currentStatus === "deleting..." ||
+      currentStatus === "unarchiving...";
 
     // Block all actions while an API call is in flight
     if (pending) return;
@@ -336,7 +337,13 @@ function App() {
     }
 
     // Archive: on non-archived repos, or repos just unarchived/errored
-    if (k === "a" && !isArchived && (!currentStatus || currentStatus === "unarchived" || currentStatus === "error")) {
+    if (
+      k === "a" &&
+      !isArchived &&
+      (!currentStatus ||
+        currentStatus === "unarchived" ||
+        currentStatus === "error")
+    ) {
       setStatus(repoName, "archiving...");
       archiveRepo(octokit, owner, name)
         .then(() => setStatus(repoName, "archived"))
@@ -394,7 +401,7 @@ function App() {
 
       <Box flexGrow={1} flexDirection="column" justifyContent="center">
         {filterOpen ? (
-          <FilterPicker current={filter} selected={filterSelected} />
+          <FilterPicker selected={filterSelected} />
         ) : (
           repo && <RepoDetail repo={repo} />
         )}
@@ -402,11 +409,10 @@ function App() {
 
       <Box flexDirection="column" gap={1}>
         {filterOpen ? (
-          <Text dimColor>↑↓ select  enter confirm  esc cancel</Text>
+          <Text dimColor>↑↓ select enter confirm esc cancel</Text>
         ) : (
           <ActionBar
             status={repo ? statuses.get(repo.nameWithOwner) : undefined}
-            filter={filter}
             isArchivedRepo={repo?.isArchived ?? false}
           />
         )}

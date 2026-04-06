@@ -16,13 +16,16 @@
   "scripts": {
     "build": "tsup",
     "start": "tsup && node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "biome check",
+    "format": "biome check --write"
   },
   "dependencies": {
     "ink": "^6.8.0",
     "react": "^19.2.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
     "@octokit/rest": "^22.0.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
