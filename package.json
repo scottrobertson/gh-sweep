@@ -1,0 +1,22 @@
+{
+  "name": "gh-cleanup",
+  "version": "1.0.0",
+  "description": "Interactive CLI to review and clean up your GitHub repos",
+  "type": "module",
+  "bin": {
+    "gh-cleanup": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "start": "tsup && node dist/index.js"
+  },
+  "devDependencies": {
+    "@octokit/rest": "^22.0.1",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.8.0"
+  }
+}
