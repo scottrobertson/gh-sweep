@@ -1,10 +1,10 @@
 {
-  "name": "gh-cleanup",
+  "name": "gh-sweep",
   "version": "1.0.0",
   "description": "Interactive CLI to review and clean up your GitHub repos",
   "type": "module",
   "bin": {
-    "gh-cleanup": "./dist/index.js"
+    "gh-sweep": "./dist/index.js"
   },
   "files": [
     "dist"

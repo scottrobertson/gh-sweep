@@ -83,7 +83,7 @@ function Header({
   return (
     <Box justifyContent="space-between">
       <Box gap={1}>
-        <Text bold>gh-cleanup</Text>
+        <Text bold>gh-sweep</Text>
         <Text dimColor>[{filter}]</Text>
       </Box>
       <Text dimColor>
