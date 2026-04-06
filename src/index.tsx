@@ -131,7 +131,7 @@ function ActionBar() {
   );
 }
 
-function StatusBar({ counts, done, busy }: { counts: Record<string, number>; done: boolean; busy: boolean }) {
+function StatusBar({ counts, done, busy }: { counts: Record<string, number>; done: boolean; busy: string | false }) {
   if (done) {
     const summary = Object.entries(counts)
       .filter(([, c]) => c > 0)
@@ -141,7 +141,7 @@ function StatusBar({ counts, done, busy }: { counts: Record<string, number>; don
   }
 
   if (busy) {
-    return <Text dimColor>Working...</Text>;
+    return <Text dimColor>{busy}</Text>;
   }
 
   return <ActionBar />;
@@ -155,7 +155,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState(0);
   const [results, setResults] = useState<Map<number, Result>>(new Map());
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | false>(false);
   const [octokit] = useState(() => createOctokit(getToken()));
 
   useEffect(() => {
@@ -195,7 +195,7 @@ function App() {
     }
 
     if (key === "a" && !archivedMode) {
-      setBusy(true);
+      setBusy("Archiving...");
       archiveRepo(octokit, owner, name).then(() => {
         setResults(new Map(results.set(current, "archive")));
         setCurrent(current + 1);
@@ -205,7 +205,7 @@ function App() {
     }
 
     if (key === "d") {
-      setBusy(true);
+      setBusy("Deleting...");
       deleteRepo(octokit, owner, name).then(() => {
         setResults(new Map(results.set(current, "delete")));
         setCurrent(current + 1);
