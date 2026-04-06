@@ -9,6 +9,16 @@ import {
   deleteRepo,
   type Repo,
 } from "./github.js";
+import {
+  formatDate,
+  applyFilter,
+  calcWidths,
+  FILTERS,
+  type Result,
+  type Status,
+  type Filter,
+  type ColWidths,
+} from "./utils.js";
 
 function getToken(): string {
   try {
@@ -41,35 +51,6 @@ function openUrl(url: string): void {
   } catch {}
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
-}
-
-type Result = "skipped" | "archived" | "deleted" | "unarchived" | "error";
-type Status = Result | "archiving..." | "deleting..." | "unarchiving...";
-type Filter = "all" | "public" | "private" | "sources" | "forks" | "archived";
-
-const FILTERS: Filter[] = ["all", "public", "private", "sources", "forks", "archived"];
-
-function applyFilter(repos: Repo[], filter: Filter): Repo[] {
-  switch (filter) {
-    case "all":
-      return repos.filter((r) => !r.isArchived);
-    case "public":
-      return repos.filter((r) => !r.isArchived && r.visibility === "public");
-    case "private":
-      return repos.filter((r) => !r.isArchived && r.visibility === "private");
-    case "sources":
-      return repos.filter((r) => !r.isArchived && !r.isFork);
-    case "forks":
-      return repos.filter((r) => !r.isArchived && r.isFork);
-    case "archived":
-      return repos.filter((r) => r.isArchived);
-  }
-}
 
 function Header({
   current,
@@ -93,26 +74,6 @@ function Header({
   );
 }
 
-interface ColWidths {
-  name: number;
-  vis: number;
-  stars: number;
-  date: number;
-  lang: number;
-}
-
-function calcWidths(repos: Repo[]): ColWidths {
-  if (repos.length === 0) {
-    return { name: 0, vis: 0, stars: 0, date: 0, lang: 0 };
-  }
-  return {
-    name: Math.max(...repos.map((r) => r.nameWithOwner.length)),
-    vis: Math.max(...repos.map((r) => r.visibility.length)),
-    stars: Math.max(...repos.map((r) => String(r.stars).length)),
-    date: Math.max(...repos.map((r) => formatDate(r.updatedAt).length)),
-    lang: Math.max(...repos.map((r) => (r.language ?? "").length)),
-  };
-}
 
 function RepoListItem({
   repo,
