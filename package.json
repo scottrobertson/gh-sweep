@@ -1,6 +1,6 @@
 {
   "name": "gh-sweep",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Interactive CLI to review and clean up your GitHub repos",
   "repository": {
     "type": "git",
