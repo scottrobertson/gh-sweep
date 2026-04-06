@@ -1,5 +1,12 @@
 import { Octokit } from "@octokit/rest";
-import type { Repo } from "./display.js";
+
+export interface Repo {
+  nameWithOwner: string;
+  updatedAt: string;
+  visibility: string;
+  url: string;
+  stars: number;
+}
 
 export function createOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
@@ -29,7 +36,6 @@ export async function fetchRepos(
       stars: r.stargazers_count ?? 0,
     }))
     .sort((a, b) => {
-      // Sort by visibility then by updated date
       if (a.visibility !== b.visibility) {
         return a.visibility.localeCompare(b.visibility);
       }
