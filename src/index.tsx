@@ -392,4 +392,5 @@ function App() {
   );
 }
 
+process.stdout.write("\x1b]0;gh-sweep\x07");
 render(<App />);
