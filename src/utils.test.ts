@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Repo } from "./github.js";
-import { applyFilter, calcWidths, formatDate } from "./utils.js";
+import {
+  applyFilter,
+  calcWidths,
+  findNextUnprocessed,
+  formatDate,
+  getVisibleActions,
+  type Status,
+} from "./utils.js";
 
 function makeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
@@ -125,5 +132,81 @@ describe("calcWidths", () => {
     const repos = [makeRepo({ language: null })];
     const widths = calcWidths(repos);
     expect(widths.lang).toBe(0);
+  });
+});
+
+function keys(status: Status | undefined, isArchived: boolean): string[] {
+  return getVisibleActions(status, isArchived).map((a) => a.key);
+}
+
+describe("getVisibleActions", () => {
+  it("untouched non-archived repo", () => {
+    expect(keys(undefined, false)).toEqual(["v", "a", "d", "s", "f", "r", "q"]);
+  });
+
+  it("untouched archived repo", () => {
+    expect(keys(undefined, true)).toEqual(["v", "u", "d", "s", "f", "r", "q"]);
+  });
+
+  it("after archiving", () => {
+    expect(keys("archived", false)).toEqual(["v", "u", "d", "f", "r", "q"]);
+  });
+
+  it("after deleting", () => {
+    expect(keys("deleted", false)).toEqual(["v", "f", "r", "q"]);
+  });
+
+  it("while archiving", () => {
+    expect(keys("archiving...", false)).toEqual(["v", "f", "r", "q"]);
+  });
+
+  it("while deleting", () => {
+    expect(keys("deleting...", false)).toEqual(["v", "f", "r", "q"]);
+  });
+
+  it("while unarchiving", () => {
+    expect(keys("unarchiving...", true)).toEqual(["v", "f", "r", "q"]);
+  });
+
+  it("after error shows retryable actions", () => {
+    expect(keys("error", false)).toEqual(["v", "a", "d", "s", "f", "r", "q"]);
+  });
+
+  it("after unarchiving allows re-archive", () => {
+    expect(keys("unarchived", false)).toEqual(["v", "a", "d", "f", "r", "q"]);
+  });
+
+  it("skipped repo", () => {
+    expect(keys("skipped", false)).toEqual(["v", "d", "f", "r", "q"]);
+  });
+});
+
+describe("findNextUnprocessed", () => {
+  const names = ["a", "b", "c", "d", "e"];
+
+  it("returns next index when unprocessed", () => {
+    expect(findNextUnprocessed(0, new Map(), names)).toBe(1);
+  });
+
+  it("skips over processed repos", () => {
+    const statuses = new Map<string, Status>([
+      ["b", "skipped"],
+      ["c", "archived"],
+    ]);
+    expect(findNextUnprocessed(0, statuses, names)).toBe(3);
+  });
+
+  it("returns last index when all remaining are processed", () => {
+    const statuses = new Map<string, Status>([
+      ["b", "skipped"],
+      ["c", "skipped"],
+      ["d", "skipped"],
+      ["e", "skipped"],
+    ]);
+    expect(findNextUnprocessed(0, statuses, names)).toBe(4);
+  });
+
+  it("stays at last index when already there", () => {
+    expect(findNextUnprocessed(4, new Map(), names)).toBe(4);
   });
 });

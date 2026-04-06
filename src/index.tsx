@@ -15,7 +15,9 @@ import {
   calcWidths,
   FILTERS,
   type Filter,
+  findNextUnprocessed,
   formatDate,
+  getVisibleActions,
   type Status,
 } from "./utils.js";
 
@@ -164,26 +166,7 @@ function ActionBar({
   status?: Status;
   isArchivedRepo: boolean;
 }) {
-  const pending = status?.endsWith("...");
-  const deleted = status === "deleted";
-  const errored = status === "error";
-  const archived = isArchivedRepo || status === "archived";
-  const untouched = !status || errored;
-
-  const actions = [
-    { key: "v", label: "view", show: true },
-    {
-      key: "a",
-      label: "archive",
-      show: (untouched || status === "unarchived") && !archived,
-    },
-    { key: "u", label: "unarchive", show: archived && !pending && !deleted },
-    { key: "d", label: "delete", show: !pending && !deleted },
-    { key: "s", label: "skip", show: untouched },
-    { key: "f", label: "filter", show: true },
-    { key: "r", label: "reload", show: true },
-    { key: "q", label: "quit", show: true },
-  ].filter((a) => a.show);
+  const actions = getVisibleActions(status, isArchivedRepo);
 
   return (
     <Box gap={2}>
@@ -235,19 +218,7 @@ function App() {
     setStatuses((prev) => new Map(prev).set(repoName, status));
   }, []);
 
-  const findNextUnprocessed = useCallback(
-    (from: number, currentStatuses: Map<string, Status>, repoList: Repo[]) => {
-      let idx = from + 1;
-      while (
-        idx < repoList.length &&
-        currentStatuses.has(repoList[idx].nameWithOwner)
-      ) {
-        idx++;
-      }
-      return Math.min(idx, repoList.length - 1);
-    },
-    [],
-  );
+  const repoNames = useMemo(() => repos.map((r) => r.nameWithOwner), [repos]);
 
   useInput((input, key) => {
     if (loading) return;
@@ -332,7 +303,7 @@ function App() {
     if (k === "s" && (!currentStatus || currentStatus === "error")) {
       setStatus(repoName, "skipped");
       const next = new Map(statuses).set(repoName, "skipped");
-      setCurrent(findNextUnprocessed(current, next, repos));
+      setCurrent(findNextUnprocessed(current, next, repoNames));
       return;
     }
 

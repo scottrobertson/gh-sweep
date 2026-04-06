@@ -56,6 +56,51 @@ export function applyFilter(repos: Repo[], filter: Filter): Repo[] {
   }
 }
 
+export interface Action {
+  key: string;
+  label: string;
+}
+
+export function getVisibleActions(
+  status: Status | undefined,
+  isArchivedRepo: boolean,
+): Action[] {
+  const pending = status?.endsWith("...");
+  const deleted = status === "deleted";
+  const errored = status === "error";
+  const archived = isArchivedRepo || status === "archived";
+  const untouched = !status || errored;
+
+  return [
+    { key: "v", label: "view", show: true },
+    {
+      key: "a",
+      label: "archive",
+      show: (untouched || status === "unarchived") && !archived,
+    },
+    { key: "u", label: "unarchive", show: archived && !pending && !deleted },
+    { key: "d", label: "delete", show: !pending && !deleted },
+    { key: "s", label: "skip", show: untouched },
+    { key: "f", label: "filter", show: true },
+    { key: "r", label: "reload", show: true },
+    { key: "q", label: "quit", show: true },
+  ]
+    .filter((a) => a.show)
+    .map(({ key, label }) => ({ key, label }));
+}
+
+export function findNextUnprocessed(
+  from: number,
+  statuses: Map<string, Status>,
+  repoNames: string[],
+): number {
+  let idx = from + 1;
+  while (idx < repoNames.length && statuses.has(repoNames[idx])) {
+    idx++;
+  }
+  return Math.min(idx, repoNames.length - 1);
+}
+
 export function calcWidths(repos: Repo[]): ColWidths {
   if (repos.length === 0) {
     return { name: 0, vis: 0, stars: 0, date: 0, lang: 0 };
