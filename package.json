@@ -4,7 +4,7 @@
   "description": "Interactive CLI to review and clean up your GitHub repos",
   "type": "module",
   "bin": {
-    "gh-sweep": "./dist/index.js"
+    "gh-sweep": "dist/index.js"
   },
   "files": [
     "dist"
