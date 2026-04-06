@@ -2,6 +2,8 @@
 
 Quickly review and clean up your GitHub repos from the terminal. Flip through your repos one by one, archiving or deleting as you go.
 
+<img width="2098" height="1558" alt="2026-04-06 at 16 16 16@2x" src="https://github.com/user-attachments/assets/10301721-cc70-45ca-a8cb-0a9a4aaaf997" />
+
 ## Install
 
 ```
