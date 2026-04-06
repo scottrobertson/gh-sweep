@@ -6,16 +6,17 @@ export interface Repo {
   visibility: string;
   url: string;
   stars: number;
+  description: string | null;
+  language: string | null;
+  isFork: boolean;
+  isArchived: boolean;
 }
 
 export function createOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
 
-export async function fetchRepos(
-  octokit: Octokit,
-  archived: boolean,
-): Promise<Repo[]> {
+export async function fetchAllRepos(octokit: Octokit): Promise<Repo[]> {
   const repos = await octokit.paginate(
     octokit.rest.repos.listForAuthenticatedUser,
     {
@@ -27,20 +28,18 @@ export async function fetchRepos(
   );
 
   return repos
-    .filter((r) => r.archived === archived)
     .map((r) => ({
       nameWithOwner: r.full_name,
       updatedAt: r.updated_at ?? "",
       visibility: r.visibility ?? (r.private ? "private" : "public"),
       url: r.html_url,
       stars: r.stargazers_count ?? 0,
+      description: r.description ?? null,
+      language: r.language ?? null,
+      isFork: r.fork,
+      isArchived: r.archived ?? false,
     }))
-    .sort((a, b) => {
-      if (a.visibility !== b.visibility) {
-        return a.visibility.localeCompare(b.visibility);
-      }
-      return a.updatedAt.localeCompare(b.updatedAt);
-    });
+    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
 }
 
 export async function archiveRepo(

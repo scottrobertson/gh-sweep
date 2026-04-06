@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { render, Box, Text, useInput, useApp, useStdout, Static } from "ink";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { render, Box, Text, useInput, useApp, useStdout } from "ink";
 import { execSync } from "child_process";
 import {
   createOctokit,
-  fetchRepos,
+  fetchAllRepos,
   archiveRepo,
   deleteRepo,
   type Repo,
@@ -47,82 +47,183 @@ function formatDate(iso: string): string {
   });
 }
 
-interface Action {
-  key: string;
-  label: string;
+type Result = "skipped" | "archived" | "deleted";
+type Status = Result | "archiving..." | "deleting...";
+type Filter = "all" | "public" | "private" | "sources" | "forks" | "archived";
+
+const FILTERS: Filter[] = ["all", "public", "private", "sources", "forks", "archived"];
+
+function applyFilter(repos: Repo[], filter: Filter): Repo[] {
+  switch (filter) {
+    case "all":
+      return repos.filter((r) => !r.isArchived);
+    case "public":
+      return repos.filter((r) => !r.isArchived && r.visibility === "public");
+    case "private":
+      return repos.filter((r) => !r.isArchived && r.visibility === "private");
+    case "sources":
+      return repos.filter((r) => !r.isArchived && !r.isFork);
+    case "forks":
+      return repos.filter((r) => !r.isArchived && r.isFork);
+    case "archived":
+      return repos.filter((r) => r.isArchived);
+  }
 }
 
-type Result = "skip" | "archive" | "delete";
-
-const archivedMode = process.argv.includes("--archived");
-
-const ACTIONS: Action[] = [
-  { key: "v", label: "view" },
-  ...(!archivedMode ? [{ key: "a", label: "archive" }] : []),
-  { key: "d", label: "delete" },
-  { key: "s", label: "skip" },
-  { key: "q", label: "quit" },
-];
-
-interface ColumnWidths {
-  name: number;
-  date: number;
-  vis: number;
-  stars: number;
-  counter: number;
-}
-
-function calcWidths(repos: Repo[]): ColumnWidths {
-  return {
-    name: Math.max(...repos.map((r) => r.nameWithOwner.length)),
-    date: Math.max(...repos.map((r) => formatDate(r.updatedAt).length)),
-    vis: Math.max(...repos.map((r) => r.visibility.length)),
-    stars: Math.max(...repos.map((r) => String(r.stars).length)),
-    counter: String(repos.length).length * 2 + 1,
-  };
-}
-
-function RepoRow({
-  repo,
-  index,
+function Header({
+  current,
   total,
-  result,
-  widths,
+  filter,
 }: {
-  repo: Repo;
-  index: number;
+  current: number;
   total: number;
-  result?: Result;
-  widths: ColumnWidths;
+  filter: Filter;
 }) {
-  const date = formatDate(repo.updatedAt);
-  const vis = repo.visibility.toUpperCase();
-  const stars = String(repo.stars);
-
   return (
-    <Box>
-      <Text bold>{repo.nameWithOwner.padEnd(widths.name)}</Text>
+    <Box justifyContent="space-between">
+      <Box gap={1}>
+        <Text bold>gh-cleanup</Text>
+        <Text dimColor>[{filter}]</Text>
+      </Box>
       <Text dimColor>
-        {"  "}
-        {`${index + 1}/${total}`.padStart(widths.counter)}
-        {"  "}
-        {date.padEnd(widths.date)}
-        {"  "}
-        {vis.padEnd(widths.vis)}
-        {"  "}
-        {"★" + stars.padStart(widths.stars)}
+        {current}/{total}
       </Text>
-      {result && <Text color="yellow">{`  → ${result}`}</Text>}
     </Box>
   );
 }
 
-function ActionBar() {
+interface ColWidths {
+  name: number;
+  vis: number;
+  stars: number;
+  date: number;
+  lang: number;
+}
+
+function calcWidths(repos: Repo[]): ColWidths {
+  if (repos.length === 0) {
+    return { name: 0, vis: 0, stars: 0, date: 0, lang: 0 };
+  }
+  return {
+    name: Math.max(...repos.map((r) => r.nameWithOwner.length)),
+    vis: Math.max(...repos.map((r) => r.visibility.length)),
+    stars: Math.max(...repos.map((r) => String(r.stars).length)),
+    date: Math.max(...repos.map((r) => formatDate(r.updatedAt).length)),
+    lang: Math.max(...repos.map((r) => (r.language ?? "").length)),
+  };
+}
+
+function RepoListItem({
+  repo,
+  status,
+  isCurrent,
+  widths,
+}: {
+  repo: Repo;
+  status?: Status;
+  isCurrent: boolean;
+  widths: ColWidths;
+}) {
+  const cols = [
+    repo.nameWithOwner.padEnd(widths.name),
+    repo.visibility.toUpperCase().padEnd(widths.vis),
+    (repo.isFork ? "FORK" : "").padEnd(4),
+    ("★" + String(repo.stars)).padStart(widths.stars + 1),
+    formatDate(repo.updatedAt).padEnd(widths.date),
+    (repo.language ?? "").padEnd(widths.lang),
+  ].join("  ");
+
+  const isPending = status === "archiving..." || status === "deleting...";
+
   return (
     <Box>
-      {ACTIONS.map((action, i) => (
+      <Text color={isCurrent ? "cyan" : undefined} bold={isCurrent}>
+        {isCurrent ? "❯ " : "  "}
+      </Text>
+      <Text bold={isCurrent} dimColor={!isCurrent}>
+        {cols}
+      </Text>
+      {status && (
+        <Text color={isPending ? "gray" : "yellow"}>
+          {"  "}
+          {isPending ? status : `→ ${status}`}
+        </Text>
+      )}
+    </Box>
+  );
+}
+
+function RepoDetail({ repo }: { repo: Repo }) {
+  return (
+    <Box
+      borderStyle="round"
+      paddingX={2}
+      paddingY={1}
+      flexDirection="column"
+      gap={1}
+    >
+      <Text bold>{repo.nameWithOwner}</Text>
+      <Text wrap="truncate">{repo.description ?? " "}</Text>
+      <Box gap={2}>
+        <Text dimColor>{repo.visibility.toUpperCase()}</Text>
+        {repo.isFork && <Text color="yellow">FORK</Text>}
+        {repo.isArchived && <Text color="gray">ARCHIVED</Text>}
+        <Text dimColor>★{repo.stars}</Text>
+        <Text dimColor>{formatDate(repo.updatedAt)}</Text>
+        {repo.language && <Text dimColor>{repo.language}</Text>}
+      </Box>
+    </Box>
+  );
+}
+
+function FilterPicker({
+  current,
+  selected,
+}: {
+  current: Filter;
+  selected: number;
+}) {
+  return (
+    <Box
+      borderStyle="round"
+      flexDirection="column"
+      paddingX={2}
+      paddingY={1}
+    >
+      <Text bold>Select type</Text>
+      <Text> </Text>
+      {FILTERS.map((f, i) => (
+        <Text key={f} color={i === selected ? "cyan" : undefined} bold={i === selected}>
+          {i === selected ? "❯ " + f : "  " + f}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
+function ActionBar({
+  processed,
+  filter,
+}: {
+  processed: boolean;
+  filter: Filter;
+}) {
+  const isArchived = filter === "archived";
+
+  const actions = [
+    { key: "v", label: "view" },
+    ...(!processed && !isArchived ? [{ key: "a", label: "archive" }] : []),
+    ...(!processed ? [{ key: "d", label: "delete" }] : []),
+    ...(!processed ? [{ key: "s", label: "skip" }] : []),
+    { key: "f", label: "filter" },
+    { key: "r", label: "reload" },
+    { key: "q", label: "quit" },
+  ];
+
+  return (
+    <Box gap={2}>
+      {actions.map((action) => (
         <Text key={action.key}>
-          {i > 0 ? "  " : ""}
           <Text bold>({action.key})</Text>
           {action.label.slice(1)}
         </Text>
@@ -131,136 +232,201 @@ function ActionBar() {
   );
 }
 
-function StatusBar({ counts, done, busy }: { counts: Record<string, number>; done: boolean; busy: string | false }) {
-  if (done) {
-    const summary = Object.entries(counts)
-      .filter(([, c]) => c > 0)
-      .map(([label, c]) => `${label} ${c}`)
-      .join(", ");
-    return <Text>Done! {summary}.</Text>;
-  }
-
-  if (busy) {
-    return <Text dimColor>{busy}</Text>;
-  }
-
-  return <ActionBar />;
-}
-
 function App() {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const termHeight = stdout.rows ?? 24;
-  const [repos, setRepos] = useState<Repo[]>([]);
+  const [allRepos, setAllRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState(0);
-  const [results, setResults] = useState<Map<number, Result>>(new Map());
-  const [busy, setBusy] = useState<string | false>(false);
+  const [statuses, setStatuses] = useState<Map<string, Status>>(new Map());
+  const [filter, setFilter] = useState<Filter>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterSelected, setFilterSelected] = useState(0);
   const [octokit] = useState(() => createOctokit(getToken()));
 
-  useEffect(() => {
-    fetchRepos(octokit, archivedMode).then((r) => {
-      setRepos(r);
+  const loadRepos = useCallback(() => {
+    setLoading(true);
+    fetchAllRepos(octokit).then((r) => {
+      setAllRepos(r);
       setLoading(false);
     });
+  }, [octokit]);
+
+  useEffect(() => {
+    loadRepos();
   }, []);
 
-  const widths = useMemo(() => (repos.length ? calcWidths(repos) : null), [repos]);
+  const repos = useMemo(() => applyFilter(allRepos, filter), [allRepos, filter]);
 
-  const counts: Record<string, number> = { archived: 0, deleted: 0, skipped: 0 };
-  for (const r of results.values()) {
-    if (r === "archive") counts.archived++;
-    if (r === "delete") counts.deleted++;
-    if (r === "skip") counts.skipped++;
-  }
+  const widths = useMemo(() => calcWidths(repos), [repos]);
 
-  const done = !loading && current >= repos.length;
+  const repo = repos[current] ?? null;
 
-  useInput((input) => {
-    if (loading || done || busy) return;
+  const setStatus = useCallback((repoName: string, status: Status) => {
+    setStatuses((prev) => new Map(prev).set(repoName, status));
+  }, []);
 
-    const repo = repos[current];
-    const [owner, name] = repo.nameWithOwner.split("/");
-    const key = input.toLowerCase();
+  const findNextUnprocessed = useCallback(
+    (from: number, currentStatuses: Map<string, Status>, repoList: Repo[]) => {
+      let idx = from + 1;
+      while (
+        idx < repoList.length &&
+        currentStatuses.has(repoList[idx].nameWithOwner)
+      ) {
+        idx++;
+      }
+      return Math.min(idx, repoList.length - 1);
+    },
+    [],
+  );
 
-    if (key === "v") {
-      openUrl(repo.url);
+  useInput((input, key) => {
+    if (loading) return;
+
+    // Filter picker mode
+    if (filterOpen) {
+      if (key.upArrow) {
+        setFilterSelected((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setFilterSelected((c) => Math.min(FILTERS.length - 1, c + 1));
+        return;
+      }
+      if (key.return) {
+        setFilter(FILTERS[filterSelected]);
+        setCurrent(0);
+        setFilterOpen(false);
+        return;
+      }
+      if (key.escape || input.toLowerCase() === "f") {
+        setFilterOpen(false);
+        return;
+      }
       return;
     }
 
-    if (key === "s") {
-      setResults(new Map(results.set(current, "skip")));
-      setCurrent(current + 1);
+    // Normal mode
+    if (key.upArrow) {
+      setCurrent((c) => Math.max(0, c - 1));
       return;
     }
 
-    if (key === "a" && !archivedMode) {
-      setBusy("Archiving...");
-      archiveRepo(octokit, owner, name).then(() => {
-        setResults(new Map(results.set(current, "archive")));
-        setCurrent(current + 1);
-        setBusy(false);
-      });
+    if (key.downArrow) {
+      setCurrent((c) => Math.min(repos.length - 1, c + 1));
       return;
     }
 
-    if (key === "d") {
-      setBusy("Deleting...");
-      deleteRepo(octokit, owner, name).then(() => {
-        setResults(new Map(results.set(current, "delete")));
-        setCurrent(current + 1);
-        setBusy(false);
-      });
+    const k = input.toLowerCase();
+    const r = repos[current];
+    if (!r) return;
+
+    if (k === "v") {
+      openUrl(r.url);
       return;
     }
 
-    if (key === "q") {
+    if (k === "f") {
+      setFilterSelected(FILTERS.indexOf(filter));
+      setFilterOpen(true);
+      return;
+    }
+
+    if (k === "r") {
+      setLoading(true);
+      setAllRepos([]);
+      setStatuses(new Map());
+      setCurrent(0);
+      loadRepos();
+      return;
+    }
+
+    if (k === "q") {
       exit();
+      return;
+    }
+
+    // Don't allow actions on already-processed or in-progress repos
+    if (statuses.has(r.nameWithOwner)) return;
+
+    const [owner, name] = r.nameWithOwner.split("/");
+    const repoName = r.nameWithOwner;
+
+    if (k === "s") {
+      setStatus(repoName, "skipped");
+      const next = new Map(statuses).set(repoName, "skipped");
+      setCurrent(findNextUnprocessed(current, next, repos));
+      return;
+    }
+
+    if (k === "a" && filter !== "archived") {
+      setStatus(repoName, "archiving...");
+      const next = new Map(statuses).set(repoName, "archiving...");
+      setCurrent(findNextUnprocessed(current, next, repos));
+      archiveRepo(octokit, owner, name).then(() => {
+        setStatus(repoName, "archived");
+      });
+      return;
+    }
+
+    if (k === "d") {
+      setStatus(repoName, "deleting...");
+      const next = new Map(statuses).set(repoName, "deleting...");
+      setCurrent(findNextUnprocessed(current, next, repos));
+      deleteRepo(octokit, owner, name).then(() => {
+        setStatus(repoName, "deleted");
+      });
     }
   });
 
-  if (loading) {
-    return (
-      <Box height={termHeight} flexDirection="column">
-        <Text>Fetching repos...</Text>
-      </Box>
-    );
-  }
-
-  const visibleRepos = repos.slice(0, done ? repos.length : current + 1);
-
-  // Header (2 lines) + status bar (1 line) + padding (2 lines) = 5
-  const contentHeight = termHeight - 5;
-
-  // If we have more repos than fit, show the tail end
-  const scrollStart = Math.max(0, visibleRepos.length - contentHeight);
-  const visibleSlice = visibleRepos.slice(scrollStart);
+  // Single consistent layout for all states
+  const listHeight = Math.max(1, termHeight - 12);
+  const scrollStart = Math.max(0, current - listHeight + 1);
+  const visibleRepos = repos.slice(scrollStart, scrollStart + listHeight);
 
   return (
     <Box height={termHeight} flexDirection="column">
-      <Box flexDirection="column">
-        <Text>
-          {repos.length} {archivedMode ? "archived " : ""}repos to review
-        </Text>
-        <Text> </Text>
+      <Header current={current + 1} total={repos.length} filter={filter} />
+
+      <Box flexDirection="column" marginTop={1} height={listHeight}>
+        {loading ? (
+          <Text>Fetching repos...</Text>
+        ) : repos.length === 0 ? (
+          <Text dimColor>No repos found</Text>
+        ) : (
+          visibleRepos.map((r, i) => {
+            const idx = scrollStart + i;
+            return (
+              <RepoListItem
+                key={r.nameWithOwner}
+                repo={r}
+                status={statuses.get(r.nameWithOwner)}
+                isCurrent={idx === current}
+                widths={widths}
+              />
+            );
+          })
+        )}
       </Box>
 
-      <Box flexDirection="column" flexGrow={1}>
-        {visibleSlice.map((repo, i) => (
-          <RepoRow
-            key={repo.nameWithOwner}
-            repo={repo}
-            index={scrollStart + i}
-            total={repos.length}
-            result={results.get(scrollStart + i)}
-            widths={widths!}
+      <Box flexGrow={1} flexDirection="column" justifyContent="center">
+        {filterOpen ? (
+          <FilterPicker current={filter} selected={filterSelected} />
+        ) : (
+          repo && <RepoDetail repo={repo} />
+        )}
+      </Box>
+
+      <Box flexDirection="column" gap={1}>
+        {filterOpen ? (
+          <Text dimColor>↑↓ select  enter confirm  esc cancel</Text>
+        ) : (
+          <ActionBar
+            processed={repo ? statuses.has(repo.nameWithOwner) : false}
+            filter={filter}
           />
-        ))}
-      </Box>
-
-      <Box flexDirection="column">
-        <Text> </Text>
-        <StatusBar counts={counts} done={done} busy={busy} />
+        )}
       </Box>
     </Box>
   );
